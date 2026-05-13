@@ -2,6 +2,8 @@
 # app.py — AI RoundTable  ·  Multi-Model AI Query & Synthesis Tool
 # ──────────────────────────────────────────────────────────────────────
 
+from __future__ import annotations
+
 import streamlit as st
 import asyncio
 import time
