@@ -21,6 +21,8 @@ if "user_email" not in st.session_state:
     st.session_state.user_email = None
 if "admin_mode" not in st.session_state:
     st.session_state.admin_mode = False
+if "cookies_changed" not in st.session_state:
+    st.session_state.cookies_changed = False
 
 # Initialize Cookies Manager
 cookies = CookieManager()
@@ -136,8 +138,7 @@ async def synthesize_with_gemini(responses, api_key):
 def update_cookies(key_name, new_val):
     if cookies.get(key_name) != new_val:
         cookies[key_name] = new_val
-        cookies.save()
-
+        st.session_state.cookies_changed = True
 
 # --- UI: Admin View ---
 def render_admin_dashboard():
@@ -283,3 +284,7 @@ elif st.session_state.user_email is None:
     render_email_gate()
 else:
     render_main_app()
+
+if st.session_state.cookies_changed:
+    cookies.save()
+    st.session_state.cookies_changed = False
