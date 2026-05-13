@@ -4,6 +4,11 @@ from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
 import google.generativeai as genai
 import os
+from streamlit_cookies_manager import CookieManager
+import database as db
+
+# Initialize DB
+db.init_db()
 
 st.set_page_config(page_title="AI RoundTable", page_icon="🧠", layout="wide")
 
@@ -12,6 +17,15 @@ if "responses" not in st.session_state:
     st.session_state.responses = {}
 if "synthesis" not in st.session_state:
     st.session_state.synthesis = ""
+if "user_email" not in st.session_state:
+    st.session_state.user_email = None
+if "admin_mode" not in st.session_state:
+    st.session_state.admin_mode = False
+
+# Initialize Cookies Manager
+cookies = CookieManager()
+if not cookies.ready():
+    st.stop()
 
 # --- API Clients Setup ---
 async def query_openai(prompt, api_key):
@@ -117,41 +131,90 @@ async def synthesize_with_gemini(responses, api_key):
     
     return await query_gemini(synthesis_prompt, api_key)
 
-# --- UI ---
-st.title("🧠 AI RoundTable")
-st.markdown("Ask a master prompt to top-tier AI models at once, and have Gemini synthesize the final result—just like NotebookLM!")
-st.info("💡 **Pro Tip:** To save free tokens and avoid rate limits, bundle multiple questions into a single master prompt rather than asking them one by one!")
 
-with st.sidebar:
-    st.header("🔑 API Keys")
-    st.markdown("Enter keys for the models you want to query. The app will automatically skip any that are left blank.")
-    
-    st.subheader("Required for Synthesis")
-    gemini_key = st.text_input("Google Gemini API Key", type="password")
-    st.caption("[Get Gemini API Key](https://aistudio.google.com/app/apikey)")
-    
-    st.subheader("Free Alternatives")
-    groq_key = st.text_input("Groq API Key", type="password")
-    st.caption("[Get Groq API Key](https://console.groq.com/keys)")
-    
-    st.subheader("Paid Options")
-    openai_key = st.text_input("OpenAI API Key (ChatGPT)", type="password")
-    st.caption("[Get OpenAI API Key](https://platform.openai.com/api-keys)")
-    
-    anthropic_key = st.text_input("Anthropic API Key (Claude)", type="password")
-    st.caption("[Get Anthropic API Key](https://console.anthropic.com/settings/keys)")
-    
-    perplexity_key = st.text_input("Perplexity API Key", type="password")
-    st.caption("[Get Perplexity API Key](https://www.perplexity.ai/settings/api)")
+# --- Helper: Save Cookies ---
+def update_cookies(key_name, new_val):
+    if cookies.get(key_name) != new_val:
+        cookies[key_name] = new_val
+        cookies.save()
 
-st.markdown("---")
-st.subheader("📝 Master Prompt")
-prompt = st.text_area("Enter your question or task here:", height=150, placeholder="e.g., What is Clipboard Health? How is RevOps done there?")
 
-if st.button("Run Queries & Synthesize", type="primary"):
-    if not prompt.strip():
-        st.warning("Please enter a prompt.")
+# --- UI: Admin View ---
+def render_admin_dashboard():
+    st.title("🛡️ Admin Dashboard")
+    st.markdown("Welcome to the Admin view. Here you can see who has accessed the tool.")
+    
+    users_df = db.get_all_users()
+    if users_df.empty:
+        st.info("No users have registered yet.")
     else:
+        st.dataframe(users_df, use_container_width=True)
+        csv = users_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Download Data as CSV",
+            data=csv,
+            file_name='users_export.csv',
+            mime='text/csv',
+        )
+
+# --- UI: Email Gate View ---
+def render_email_gate():
+    st.title("Welcome to AI RoundTable 🧠")
+    st.markdown("Please enter your details to access the multi-AI synthesizer tool.")
+    
+    with st.form("gate_form"):
+        email = st.text_input("Email Address *")
+        name = st.text_input("First Name (Optional)")
+        submitted = st.form_submit_button("Access Tool")
+        
+        if submitted:
+            if not email:
+                st.error("Please provide an email address.")
+            elif "@" not in email:
+                st.error("Please provide a valid email address.")
+            else:
+                db.add_user(email.strip(), name.strip())
+                st.session_state.user_email = email.strip()
+                st.rerun()
+
+# --- UI: Main App View ---
+def render_main_app():
+    st.title("🧠 AI RoundTable")
+    st.markdown("Ask a master prompt to top-tier AI models at once, and have Gemini synthesize the final result—just like NotebookLM!")
+    st.info("💡 **Pro Tip:** To save free tokens and avoid rate limits, bundle multiple questions into a single master prompt rather than asking them one by one!")
+    
+    with st.sidebar:
+        st.header("🔑 API Keys")
+        st.markdown("Keys are saved securely in your browser cookies.")
+        
+        st.subheader("Required for Synthesis")
+        gemini_key = st.text_input("Google Gemini API Key", type="password", value=cookies.get("gemini_key", ""))
+        update_cookies("gemini_key", gemini_key)
+        st.caption("[Get Gemini API Key](https://aistudio.google.com/app/apikey)")
+        
+        st.subheader("Free Alternatives")
+        groq_key = st.text_input("Groq API Key", type="password", value=cookies.get("groq_key", ""))
+        update_cookies("groq_key", groq_key)
+        st.caption("[Get Groq API Key](https://console.groq.com/keys)")
+        
+        st.subheader("Paid Options")
+        openai_key = st.text_input("OpenAI API Key (ChatGPT)", type="password", value=cookies.get("openai_key", ""))
+        update_cookies("openai_key", openai_key)
+        st.caption("[Get OpenAI API Key](https://platform.openai.com/api-keys)")
+        
+        anthropic_key = st.text_input("Anthropic API Key (Claude)", type="password", value=cookies.get("anthropic_key", ""))
+        update_cookies("anthropic_key", anthropic_key)
+        st.caption("[Get Anthropic API Key](https://console.anthropic.com/settings/keys)")
+        
+        perplexity_key = st.text_input("Perplexity API Key", type="password", value=cookies.get("perplexity_key", ""))
+        update_cookies("perplexity_key", perplexity_key)
+        st.caption("[Get Perplexity API Key](https://www.perplexity.ai/settings/api)")
+    
+    st.markdown("---")
+    st.subheader("📝 Master Prompt")
+    prompt = st.text_area("Enter your question or task here:", height=150, placeholder="e.g., What is Clipboard Health? How is RevOps done there?")
+    
+    if st.button("Run Queries & Synthesize", type="primary"):
         keys = {
             'gemini': gemini_key.strip() if gemini_key else None,
             'groq': groq_key.strip() if groq_key else None,
@@ -160,9 +223,11 @@ if st.button("Run Queries & Synthesize", type="primary"):
             'perplexity': perplexity_key.strip() if perplexity_key else None,
         }
         
-        # Check if at least one key is provided
+        # Checking for Cookie expiration / empty keys
         if not any(keys.values()):
-            st.error("Please provide at least one API key in the sidebar.")
+            st.error("⚠️ **Your saved API keys have expired or are missing.** Please re-enter at least one API key in the sidebar.")
+        elif not prompt.strip():
+            st.warning("Please enter a prompt.")
         else:
             with st.status("Fetching responses from all models...", expanded=True) as status:
                 try:
@@ -180,24 +245,41 @@ if st.button("Run Queries & Synthesize", type="primary"):
                 st.session_state.synthesis = synthesis
                 
                 status.update(label="Complete!", state="complete", expanded=False)
+    
+    # Display Results
+    if st.session_state.synthesis:
+        st.header("✨ Synthesized Result (by Gemini 1.5 Pro)")
+        st.markdown(st.session_state.synthesis)
+        
+        st.markdown("---")
+        st.subheader("🔍 Raw Source Responses")
+        
+        models = list(st.session_state.responses.keys())
+        for i in range(0, len(models), 2):
+            col1, col2 = st.columns(2)
+            with col1:
+                with st.expander(f"{models[i]}"):
+                    st.markdown(st.session_state.responses[models[i]])
+            if i + 1 < len(models):
+                with col2:
+                    with st.expander(f"{models[i+1]}"):
+                        st.markdown(st.session_state.responses[models[i+1]])
 
-# Display Results
-if st.session_state.synthesis:
-    st.header("✨ Synthesized Result (by Gemini 1.5 Pro)")
-    st.markdown(st.session_state.synthesis)
-    
+
+# --- Routing ---
+with st.sidebar:
     st.markdown("---")
-    st.subheader("🔍 Raw Source Responses")
-    
-    models = list(st.session_state.responses.keys())
-    
-    # Dynamically display raw responses in rows of 2
-    for i in range(0, len(models), 2):
-        col1, col2 = st.columns(2)
-        with col1:
-            with st.expander(f"{models[i]}"):
-                st.markdown(st.session_state.responses[models[i]])
-        if i + 1 < len(models):
-            with col2:
-                with st.expander(f"{models[i+1]}"):
-                    st.markdown(st.session_state.responses[models[i+1]])
+    # Secret Admin Toggle
+    admin_pw = os.environ.get("ADMIN_PASSWORD", "")
+    is_admin = st.text_input("Admin Access", type="password", placeholder="Enter Password")
+    if is_admin == admin_pw and admin_pw != "":
+        st.session_state.admin_mode = True
+    else:
+        st.session_state.admin_mode = False
+
+if st.session_state.admin_mode:
+    render_admin_dashboard()
+elif st.session_state.user_email is None:
+    render_email_gate()
+else:
+    render_main_app()
