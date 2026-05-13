@@ -42,56 +42,74 @@ if not cookies.ready():
 # --- API Clients Setup ---
 async def query_openai(prompt, api_key):
     try:
-        client = AsyncOpenAI(api_key=api_key)
-        response = await client.chat.completions.create(
-            model=MODEL_CONFIG["openai"],
-            messages=[{"role": "user", "content": prompt}]
+        client = AsyncOpenAI(api_key=api_key, timeout=45.0)
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=MODEL_CONFIG["openai"],
+                messages=[{"role": "user", "content": prompt}]
+            ), timeout=45.0
         )
         return response.choices[0].message.content
+    except asyncio.TimeoutError:
+        return "Error: Request timed out after 45 seconds."
     except Exception as e:
         return f"Error: {str(e)}"
 
 async def query_anthropic(prompt, api_key):
     try:
-        client = AsyncAnthropic(api_key=api_key)
-        response = await client.messages.create(
-            model=MODEL_CONFIG["anthropic"],
-            max_tokens=4000,
-            messages=[{"role": "user", "content": prompt}]
+        client = AsyncAnthropic(api_key=api_key, timeout=45.0)
+        response = await asyncio.wait_for(
+            client.messages.create(
+                model=MODEL_CONFIG["anthropic"],
+                max_tokens=4000,
+                messages=[{"role": "user", "content": prompt}]
+            ), timeout=45.0
         )
         return response.content[0].text
+    except asyncio.TimeoutError:
+        return "Error: Request timed out after 45 seconds."
     except Exception as e:
         return f"Error: {str(e)}"
 
 async def query_gemini(prompt, api_key, is_synthesis=False):
     try:
-        # Set API version to v1 to ensure compatibility with 2026 production models
-        genai.configure(api_key=api_key, client_options={'api_endpoint': 'generativelanguage.googleapis.com/v1'})
+        # Simplified configuration; SDK auto-handles versioning dynamically
+        genai.configure(api_key=api_key)
         model = genai.GenerativeModel(MODEL_CONFIG["gemini"])
-        response = await model.generate_content_async(prompt)
+        response = await asyncio.wait_for(model.generate_content_async(prompt), timeout=45.0)
         return response.text
+    except asyncio.TimeoutError:
+        return "Error: Request timed out after 45 seconds."
     except Exception as e:
         return f"Error: {str(e)}"
 
 async def query_perplexity(prompt, api_key):
     try:
-        client = AsyncOpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
-        response = await client.chat.completions.create(
-            model=MODEL_CONFIG["perplexity"],
-            messages=[{"role": "user", "content": prompt}]
+        client = AsyncOpenAI(api_key=api_key, base_url="https://api.perplexity.ai", timeout=45.0)
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=MODEL_CONFIG["perplexity"],
+                messages=[{"role": "user", "content": prompt}]
+            ), timeout=45.0
         )
         return response.choices[0].message.content
+    except asyncio.TimeoutError:
+        return "Error: Request timed out after 45 seconds."
     except Exception as e:
         return f"Error: {str(e)}"
 
 async def query_groq(prompt, api_key, model_name):
     try:
-        client = AsyncOpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
-        response = await client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": prompt}]
+        client = AsyncOpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1", timeout=45.0)
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}]
+            ), timeout=45.0
         )
         return response.choices[0].message.content
+    except asyncio.TimeoutError:
+        return "Error: Request timed out after 45 seconds."
     except Exception as e:
         return f"Error: {str(e)}"
 
