@@ -1,0 +1,23 @@
+# ── AI RoundTable .gitignore ──────────────────────────────────────────
+# Sensitive data
+.env
+users.db
+
+# Streamlit secrets (if used)
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
