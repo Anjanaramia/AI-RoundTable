@@ -10,6 +10,16 @@ import database as db
 # Initialize DB
 db.init_db()
 
+# --- MODEL CONFIGURATION ---
+MODEL_CONFIG = {
+    "openai": "gpt-4o",
+    "anthropic": "claude-3-opus-20240229",
+    "gemini": "gemini-2.5-pro",
+    "perplexity": "llama-3.1-sonar-large-128k-online",
+    "groq_1": "llama-3.3-70b-versatile",
+    "groq_2": "llama-3.1-8b-instant"
+}
+
 st.set_page_config(page_title="AI RoundTable", page_icon="🧠", layout="wide")
 
 # Initialize Session State
@@ -34,7 +44,7 @@ async def query_openai(prompt, api_key):
     try:
         client = AsyncOpenAI(api_key=api_key)
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model=MODEL_CONFIG["openai"],
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content
@@ -45,7 +55,7 @@ async def query_anthropic(prompt, api_key):
     try:
         client = AsyncAnthropic(api_key=api_key)
         response = await client.messages.create(
-            model="claude-3-opus-20240229",
+            model=MODEL_CONFIG["anthropic"],
             max_tokens=4000,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -53,10 +63,11 @@ async def query_anthropic(prompt, api_key):
     except Exception as e:
         return f"Error: {str(e)}"
 
-async def query_gemini(prompt, api_key):
+async def query_gemini(prompt, api_key, is_synthesis=False):
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        # Set API version to v1 to ensure compatibility with 2026 production models
+        genai.configure(api_key=api_key, client_options={'api_endpoint': 'generativelanguage.googleapis.com/v1'})
+        model = genai.GenerativeModel(MODEL_CONFIG["gemini"])
         response = await model.generate_content_async(prompt)
         return response.text
     except Exception as e:
@@ -66,7 +77,7 @@ async def query_perplexity(prompt, api_key):
     try:
         client = AsyncOpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
         response = await client.chat.completions.create(
-            model="llama-3.1-sonar-large-128k-online",
+            model=MODEL_CONFIG["perplexity"],
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content
@@ -91,12 +102,12 @@ async def fetch_all_responses(prompt, keys):
     
     if keys.get('gemini'):
         tasks.append(query_gemini(prompt, keys['gemini']))
-        model_names.append("Gemini (1.5 Pro)")
+        model_names.append("Gemini (2.5 Pro)")
     if keys.get('groq'):
-        tasks.append(query_groq(prompt, keys['groq'], "llama3-70b-8192"))
-        model_names.append("Groq (Llama-3 70B)")
-        tasks.append(query_groq(prompt, keys['groq'], "mixtral-8x7b-32768"))
-        model_names.append("Groq (Mixtral 8x7B)")
+        tasks.append(query_groq(prompt, keys['groq'], MODEL_CONFIG["groq_1"]))
+        model_names.append(f"Groq ({MODEL_CONFIG['groq_1']})")
+        tasks.append(query_groq(prompt, keys['groq'], MODEL_CONFIG["groq_2"]))
+        model_names.append(f"Groq ({MODEL_CONFIG['groq_2']})")
     if keys.get('openai'):
         tasks.append(query_openai(prompt, keys['openai']))
         model_names.append("ChatGPT (GPT-4o)")
@@ -131,7 +142,7 @@ async def synthesize_with_gemini(responses, api_key):
     
     synthesis_prompt = f"{context}\n\nTask: Synthesize the above information into a single, comprehensive, well-structured, and easy-to-read report. Eliminate redundancies, highlight the most important insights, and present a cohesive final answer to the original prompt. Act like an expert analyst combining research."
     
-    return await query_gemini(synthesis_prompt, api_key)
+    return await query_gemini(synthesis_prompt, api_key, is_synthesis=True)
 
 
 # --- Helper: Save Cookies ---
@@ -139,6 +150,7 @@ def update_cookies(key_name, new_val):
     if cookies.get(key_name) != new_val:
         cookies[key_name] = new_val
         st.session_state.cookies_changed = True
+
 
 # --- UI: Admin View ---
 def render_admin_dashboard():
@@ -160,6 +172,11 @@ def render_admin_dashboard():
 
 # --- UI: Email Gate View ---
 def render_email_gate():
+    try:
+        st.image("banner.png", use_container_width=True)
+    except Exception:
+        pass # Handle case if image is missing gracefully
+    
     st.title("Welcome to AI RoundTable 🧠")
     st.markdown("Please enter your details to access the multi-AI synthesizer tool.")
     
@@ -180,6 +197,11 @@ def render_email_gate():
 
 # --- UI: Main App View ---
 def render_main_app():
+    try:
+        st.image("banner.png", use_container_width=True)
+    except Exception:
+        pass # Handle case if image is missing gracefully
+        
     st.title("🧠 AI RoundTable")
     st.markdown("Ask a master prompt to top-tier AI models at once, and have Gemini synthesize the final result—just like NotebookLM!")
     st.info("💡 **Pro Tip:** To save free tokens and avoid rate limits, bundle multiple questions into a single master prompt rather than asking them one by one!")
@@ -240,7 +262,7 @@ def render_main_app():
                 responses = loop.run_until_complete(fetch_all_responses(prompt, keys))
                 st.session_state.responses = responses
                 
-                status.update(label="Responses fetched! Now synthesizing with Gemini 1.5 Pro...", state="running")
+                status.update(label="Responses fetched! Now synthesizing with Gemini 2.5 Pro...", state="running")
                 
                 synthesis = loop.run_until_complete(synthesize_with_gemini(responses, keys['gemini']))
                 st.session_state.synthesis = synthesis
@@ -249,7 +271,7 @@ def render_main_app():
     
     # Display Results
     if st.session_state.synthesis:
-        st.header("✨ Synthesized Result (by Gemini 1.5 Pro)")
+        st.header("✨ Synthesized Result (by Gemini 2.5)")
         st.markdown(st.session_state.synthesis)
         
         st.markdown("---")
@@ -268,18 +290,16 @@ def render_main_app():
 
 
 # --- Routing ---
-with st.sidebar:
-    st.markdown("---")
-    # Secret Admin Toggle
-    admin_pw = os.environ.get("ADMIN_PASSWORD", "")
-    is_admin = st.text_input("Admin Access", type="password", placeholder="Enter Password")
-    if is_admin == admin_pw and admin_pw != "":
-        st.session_state.admin_mode = True
-    else:
-        st.session_state.admin_mode = False
+query_params = st.query_params
+admin_pw = os.environ.get("ADMIN_PASSWORD", "")
 
-if st.session_state.admin_mode:
-    render_admin_dashboard()
+if query_params.get("admin") == "true":
+    st.title("Admin Portal")
+    is_admin = st.text_input("Enter Admin Password", type="password")
+    if is_admin == admin_pw and admin_pw != "":
+        render_admin_dashboard()
+    elif is_admin != "":
+        st.error("Incorrect Password.")
 elif st.session_state.user_email is None:
     render_email_gate()
 else:
