@@ -242,16 +242,20 @@ async def run_synthesis(responses: dict, api_key: str, model_key: str) -> str:
 async def run_disagreement_analysis(responses: dict, gemini_key: str) -> str:
     """
     Identify disagreements across model responses.
-    Always uses gemini-2.5-pro (via config) for this analysis.
-    Falls back gracefully if no Gemini key is available.
+    Uses gemini-2.5-pro (via config) for this analysis.
+    Returns a clean user-facing message on quota / rate-limit errors.
     """
     model_text = _build_model_responses_text(responses)
     if not model_text:
         return ""
-    disagree_prompt = DISAGREEMENT_PROMPT_TEMPLATE.format(model_responses=model_text)
     if not gemini_key:
-        return "Disagreement analysis requires a Gemini API key."
-    return await query_gemini(disagree_prompt, gemini_key)
+        return ""
+    disagree_prompt = DISAGREEMENT_PROMPT_TEMPLATE.format(model_responses=model_text)
+    result = await query_gemini(disagree_prompt, gemini_key)
+    # Detect quota / rate-limit errors and return a clean message
+    if result.startswith("Error:") and ("429" in result or "quota" in result.lower() or "rate" in result.lower()):
+        return "_QUOTA_EXCEEDED_"
+    return result
 
 
 # ── Cookie Helpers ───────────────────────────────────────────────────
@@ -541,15 +545,21 @@ def render_main_app():
 
                     st.session_state.synthesis = synthesis
 
-                    # ── Disagreement Analysis ────────────────────────
+                    # ── Disagreement Analysis (separate Gemini call) ──
+                    # Only run if Gemini key is present AND synthesis didn't
+                    # already fail with a 429 (would just fail again).
                     disagree_key = keys.get("gemini")
-                    if disagree_key:
+                    synthesis_hit_quota = (
+                        synthesis.startswith("Error:") and
+                        ("429" in synthesis or "quota" in synthesis.lower())
+                    )
+                    if disagree_key and not synthesis_hit_quota:
                         try:
                             disagreements = asyncio.run(
                                 run_disagreement_analysis(responses, disagree_key)
                             )
                         except Exception as e:
-                            disagreements = f"Disagreement analysis error: {e}"
+                            disagreements = "_QUOTA_EXCEEDED_"
                     else:
                         disagreements = ""
                     st.session_state.disagreements = disagreements
@@ -600,7 +610,16 @@ def render_main_app():
             # Disagreement analysis
             if st.session_state.disagreements:
                 st.divider()
-                st.info(f"⚡ **Where Models Disagreed**\n\n{st.session_state.disagreements}")
+                if st.session_state.disagreements == "_QUOTA_EXCEEDED_":
+                    st.warning(
+                        "⚡ **Where Models Disagreed** — analysis skipped.\n\n"
+                        "Gemini 2.5 Pro free-tier quota was exhausted for today. "
+                        "[Upgrade your plan](https://ai.dev/rate-limit) or try again tomorrow."
+                    )
+                elif st.session_state.disagreements.startswith("Error:"):
+                    st.warning(f"⚡ **Where Models Disagreed** — {st.session_state.disagreements}")
+                else:
+                    st.info(f"⚡ **Where Models Disagreed**\n\n{st.session_state.disagreements}")
 
             st.divider()
             st.subheader("🔍 Raw Source Responses")
