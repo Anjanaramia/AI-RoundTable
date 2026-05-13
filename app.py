@@ -191,7 +191,7 @@ def render_admin_dashboard():
 # --- UI: Email Gate View ---
 def render_email_gate():
     try:
-        st.image("banner.png", use_container_width=True)
+        st.image("svg fill=none height=2500 viewBox=0 -.01 39.5 39.53 width=2500 xmlns=httpwww.w3.org2000svgpath d=m7.75 26.27 7.77-4.36.13-.38-.13-.21h-.38l-1.3-.08-4.44-.12-3.85-.16-3.73-.2-.94-.2-.88-1.16.09-.58.png", use_container_width=True)
     except Exception:
         pass # Handle case if image is missing gracefully
     
@@ -216,7 +216,7 @@ def render_email_gate():
 # --- UI: Main App View ---
 def render_main_app():
     try:
-        st.image("banner.png", use_container_width=True)
+        st.image("svg fill=none height=2500 viewBox=0 -.01 39.5 39.53 width=2500 xmlns=httpwww.w3.org2000svgpath d=m7.75 26.27 7.77-4.36.13-.38-.13-.21h-.38l-1.3-.08-4.44-.12-3.85-.16-3.73-.2-.94-.2-.88-1.16.09-.58.png", use_container_width=True)
     except Exception:
         pass # Handle case if image is missing gracefully
         
