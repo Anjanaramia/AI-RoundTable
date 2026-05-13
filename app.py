@@ -127,15 +127,22 @@ with st.sidebar:
     st.markdown("Enter keys for the models you want to query. The app will automatically skip any that are left blank.")
     
     st.subheader("Required for Synthesis")
-    gemini_key = st.text_input("Google Gemini API Key", type="password", help="Required to run the Master Synthesizer.")
+    gemini_key = st.text_input("Google Gemini API Key", type="password")
+    st.caption("[Get Gemini API Key](https://aistudio.google.com/app/apikey)")
     
     st.subheader("Free Alternatives")
-    groq_key = st.text_input("Groq API Key", type="password", help="Free open-source models (Llama-3, Mixtral). Get a key at console.groq.com.")
+    groq_key = st.text_input("Groq API Key", type="password")
+    st.caption("[Get Groq API Key](https://console.groq.com/keys)")
     
     st.subheader("Paid Options")
     openai_key = st.text_input("OpenAI API Key (ChatGPT)", type="password")
+    st.caption("[Get OpenAI API Key](https://platform.openai.com/api-keys)")
+    
     anthropic_key = st.text_input("Anthropic API Key (Claude)", type="password")
+    st.caption("[Get Anthropic API Key](https://console.anthropic.com/settings/keys)")
+    
     perplexity_key = st.text_input("Perplexity API Key", type="password")
+    st.caption("[Get Perplexity API Key](https://www.perplexity.ai/settings/api)")
 
 st.markdown("---")
 st.subheader("📝 Master Prompt")
