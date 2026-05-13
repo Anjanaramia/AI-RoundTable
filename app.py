@@ -15,7 +15,6 @@ if "synthesis" not in st.session_state:
 
 # --- API Clients Setup ---
 async def query_openai(prompt, api_key):
-    if not api_key: return "API Key not provided."
     try:
         client = AsyncOpenAI(api_key=api_key)
         response = await client.chat.completions.create(
@@ -27,7 +26,6 @@ async def query_openai(prompt, api_key):
         return f"Error: {str(e)}"
 
 async def query_anthropic(prompt, api_key):
-    if not api_key: return "API Key not provided."
     try:
         client = AsyncAnthropic(api_key=api_key)
         response = await client.messages.create(
@@ -40,19 +38,16 @@ async def query_anthropic(prompt, api_key):
         return f"Error: {str(e)}"
 
 async def query_gemini(prompt, api_key):
-    if not api_key: return "API Key not provided."
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-pro-latest')
+        model = genai.GenerativeModel('gemini-1.5-pro')
         response = await model.generate_content_async(prompt)
         return response.text
     except Exception as e:
         return f"Error: {str(e)}"
 
 async def query_perplexity(prompt, api_key):
-    if not api_key: return "API Key not provided."
     try:
-        # Note: Perplexity models update occasionally. Currently llama-3.1-sonar-large-128k-online is popular.
         client = AsyncOpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
         response = await client.chat.completions.create(
             model="llama-3.1-sonar-large-128k-online",
@@ -62,33 +57,61 @@ async def query_perplexity(prompt, api_key):
     except Exception as e:
         return f"Error: {str(e)}"
 
+async def query_groq(prompt, api_key, model_name):
+    try:
+        client = AsyncOpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+        response = await client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 # --- Main App Logic ---
 async def fetch_all_responses(prompt, keys):
-    tasks = [
-        query_openai(prompt, keys.get('openai')),
-        query_anthropic(prompt, keys.get('anthropic')),
-        query_gemini(prompt, keys.get('gemini')),
-        query_perplexity(prompt, keys.get('perplexity'))
-    ]
+    tasks = []
+    model_names = []
+    
+    if keys.get('gemini'):
+        tasks.append(query_gemini(prompt, keys['gemini']))
+        model_names.append("Gemini (1.5 Pro)")
+    if keys.get('groq'):
+        tasks.append(query_groq(prompt, keys['groq'], "llama3-70b-8192"))
+        model_names.append("Groq (Llama-3 70B)")
+        tasks.append(query_groq(prompt, keys['groq'], "mixtral-8x7b-32768"))
+        model_names.append("Groq (Mixtral 8x7B)")
+    if keys.get('openai'):
+        tasks.append(query_openai(prompt, keys['openai']))
+        model_names.append("ChatGPT (GPT-4o)")
+    if keys.get('anthropic'):
+        tasks.append(query_anthropic(prompt, keys['anthropic']))
+        model_names.append("Claude (Opus)")
+    if keys.get('perplexity'):
+        tasks.append(query_perplexity(prompt, keys['perplexity']))
+        model_names.append("Perplexity (Sonar Online)")
+        
+    if not tasks:
+        return {}
+        
     results = await asyncio.gather(*tasks)
-    return {
-        "ChatGPT (GPT-4o)": results[0],
-        "Claude (Opus)": results[1],
-        "Gemini (1.5 Pro)": results[2],
-        "Perplexity (Sonar Online)": results[3]
-    }
+    return dict(zip(model_names, results))
 
 async def synthesize_with_gemini(responses, api_key):
     if not api_key:
         return "Cannot synthesize: Gemini API Key is missing. Please provide it in the sidebar to enable synthesis."
+    if not responses:
+        return "No API keys were provided, so no responses were generated."
     
     context = "Here are answers to a user's prompt from multiple AI models:\n\n"
+    valid_responses = 0
     for model_name, answer in responses.items():
         if "API Key not provided" not in answer and "Error:" not in answer:
             context += f"### {model_name}\n{answer}\n\n"
-    
-    if context == "Here are answers to a user's prompt from multiple AI models:\n\n":
-        return "No valid responses were generated to synthesize. Check your API keys."
+            valid_responses += 1
+            
+    if valid_responses == 0:
+        return "No valid responses were generated to synthesize. Check your API keys or quota limits."
     
     synthesis_prompt = f"{context}\n\nTask: Synthesize the above information into a single, comprehensive, well-structured, and easy-to-read report. Eliminate redundancies, highlight the most important insights, and present a cohesive final answer to the original prompt. Act like an expert analyst combining research."
     
@@ -96,14 +119,22 @@ async def synthesize_with_gemini(responses, api_key):
 
 # --- UI ---
 st.title("🧠 AI RoundTable")
-st.markdown("Ask a master prompt to the top AI models at once, and have Gemini synthesize the final result—just like NotebookLM!")
+st.markdown("Ask a master prompt to top-tier AI models at once, and have Gemini synthesize the final result—just like NotebookLM!")
+st.info("💡 **Pro Tip:** To save free tokens and avoid rate limits, bundle multiple questions into a single master prompt rather than asking them one by one!")
 
 with st.sidebar:
     st.header("🔑 API Keys")
-    st.markdown("Enter the keys for the models you want to query. They are not stored permanently.")
+    st.markdown("Enter keys for the models you want to query. The app will automatically skip any that are left blank.")
+    
+    st.subheader("Required for Synthesis")
+    gemini_key = st.text_input("Google Gemini API Key", type="password", help="Required to run the Master Synthesizer.")
+    
+    st.subheader("Free Alternatives")
+    groq_key = st.text_input("Groq API Key", type="password", help="Free open-source models (Llama-3, Mixtral). Get a key at console.groq.com.")
+    
+    st.subheader("Paid Options")
     openai_key = st.text_input("OpenAI API Key (ChatGPT)", type="password")
     anthropic_key = st.text_input("Anthropic API Key (Claude)", type="password")
-    gemini_key = st.text_input("Google Gemini API Key", type="password")
     perplexity_key = st.text_input("Perplexity API Key", type="password")
 
 st.markdown("---")
@@ -115,28 +146,33 @@ if st.button("Run Queries & Synthesize", type="primary"):
         st.warning("Please enter a prompt.")
     else:
         keys = {
-            'openai': openai_key,
-            'anthropic': anthropic_key,
-            'gemini': gemini_key,
-            'perplexity': perplexity_key
+            'gemini': gemini_key.strip() if gemini_key else None,
+            'groq': groq_key.strip() if groq_key else None,
+            'openai': openai_key.strip() if openai_key else None,
+            'anthropic': anthropic_key.strip() if anthropic_key else None,
+            'perplexity': perplexity_key.strip() if perplexity_key else None,
         }
         
-        with st.status("Fetching responses from all models...", expanded=True) as status:
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+        # Check if at least one key is provided
+        if not any(keys.values()):
+            st.error("Please provide at least one API key in the sidebar.")
+        else:
+            with st.status("Fetching responses from all models...", expanded=True) as status:
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    
+                responses = loop.run_until_complete(fetch_all_responses(prompt, keys))
+                st.session_state.responses = responses
                 
-            responses = loop.run_until_complete(fetch_all_responses(prompt, keys))
-            st.session_state.responses = responses
-            
-            status.update(label="Responses fetched! Now synthesizing with Gemini 1.5 Pro...", state="running")
-            
-            synthesis = loop.run_until_complete(synthesize_with_gemini(responses, gemini_key))
-            st.session_state.synthesis = synthesis
-            
-            status.update(label="Complete!", state="complete", expanded=False)
+                status.update(label="Responses fetched! Now synthesizing with Gemini 1.5 Pro...", state="running")
+                
+                synthesis = loop.run_until_complete(synthesize_with_gemini(responses, keys['gemini']))
+                st.session_state.synthesis = synthesis
+                
+                status.update(label="Complete!", state="complete", expanded=False)
 
 # Display Results
 if st.session_state.synthesis:
@@ -146,18 +182,15 @@ if st.session_state.synthesis:
     st.markdown("---")
     st.subheader("🔍 Raw Source Responses")
     
-    col1, col2 = st.columns(2)
     models = list(st.session_state.responses.keys())
     
-    if len(models) >= 4:
+    # Dynamically display raw responses in rows of 2
+    for i in range(0, len(models), 2):
+        col1, col2 = st.columns(2)
         with col1:
-            with st.expander(f"{models[0]}"):
-                st.markdown(st.session_state.responses[models[0]])
-            with st.expander(f"{models[2]}"):
-                st.markdown(st.session_state.responses[models[2]])
-                
-        with col2:
-            with st.expander(f"{models[1]}"):
-                st.markdown(st.session_state.responses[models[1]])
-            with st.expander(f"{models[3]}"):
-                st.markdown(st.session_state.responses[models[3]])
+            with st.expander(f"{models[i]}"):
+                st.markdown(st.session_state.responses[models[i]])
+        if i + 1 < len(models):
+            with col2:
+                with st.expander(f"{models[i+1]}"):
+                    st.markdown(st.session_state.responses[models[i+1]])
