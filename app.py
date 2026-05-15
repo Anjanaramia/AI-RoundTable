@@ -19,6 +19,7 @@ from config import (
     MODEL_CONFIG,
     MODEL_DISPLAY_NAMES,
     MODEL_KEY_MAP,
+    API_QUOTA_INFO,
     TIMEOUT_SECONDS,
     RATE_LIMIT_SECONDS,
     SYNTHESIS_PROMPT_TEMPLATE,
@@ -339,53 +340,62 @@ def render_main_app():
         # ── API Keys ─────────────────────────────────────────────────
         st.header("🔑 API Keys")
 
+        # Helper: render one API key block with inline quota info
+        def _api_key_block(cookie_name, label, provider_key, get_key_url):
+            """Render key input + plan selector + quota indicator."""
+            info = API_QUOTA_INFO[provider_key]
+            tier_names = list(info["paid_tiers"].keys())
+
+            # Plan selector (only show if >1 tier option)
+            sess_plan_key = f"_plan_{provider_key}"
+            if len(tier_names) > 1:
+                selected_plan = st.selectbox(
+                    f"{label} — plan",
+                    tier_names,
+                    key=sess_plan_key,
+                    label_visibility="collapsed",
+                )
+            else:
+                selected_plan = tier_names[0]
+                st.session_state[sess_plan_key] = selected_plan
+
+            tier = info["paid_tiers"][selected_plan]
+            runs = tier["runs_day"]
+            cost = tier["cost_per_run"]
+
+            # Quota badge
+            if runs >= 9999:
+                quota_str = "♾️ unlimited runs/day"
+            elif runs == 0:
+                quota_str = "⛔ no free tier"
+            else:
+                quota_str = f"~{runs} runs/day"
+
+            if cost == 0:
+                cost_str = "free"
+            else:
+                cost_str = f"~${cost:.3f}/run"
+
+            st.caption(f"{quota_str}  ·  {cost_str}  ·  {info['free_note'] if selected_plan == tier_names[0] else selected_plan}")
+
+            # Key input
+            val = st.text_input(label, type="password", value=_read_key(cookie_name, remember_keys))
+            update_cookies(cookie_name, val, remember_keys)
+            if not remember_keys:
+                st.session_state[f"_sess_{cookie_name}"] = val
+            st.caption(f"[Get key]({get_key_url})")
+            return val
+
         st.subheader("Required for Synthesis")
-        gemini_key = st.text_input(
-            "Google Gemini API Key", type="password",
-            value=_read_key("gemini_key", remember_keys),
-        )
-        update_cookies("gemini_key", gemini_key, remember_keys)
-        if not remember_keys:
-            st.session_state["_sess_gemini_key"] = gemini_key
-        st.caption("[Get Gemini API Key](https://aistudio.google.com/app/apikey)")
+        gemini_key = _api_key_block("gemini_key", "Google Gemini", "gemini", "https://aistudio.google.com/app/apikey")
 
         st.subheader("Free Alternatives")
-        groq_key = st.text_input(
-            "Groq API Key", type="password",
-            value=_read_key("groq_key", remember_keys),
-        )
-        update_cookies("groq_key", groq_key, remember_keys)
-        if not remember_keys:
-            st.session_state["_sess_groq_key"] = groq_key
-        st.caption("[Get Groq API Key](https://console.groq.com/keys)")
+        groq_key = _api_key_block("groq_key", "Groq", "groq", "https://console.groq.com/keys")
 
         st.subheader("Paid Options")
-        openai_key = st.text_input(
-            "OpenAI API Key (ChatGPT)", type="password",
-            value=_read_key("openai_key", remember_keys),
-        )
-        update_cookies("openai_key", openai_key, remember_keys)
-        if not remember_keys:
-            st.session_state["_sess_openai_key"] = openai_key
-        st.caption("[Get OpenAI API Key](https://platform.openai.com/api-keys)")
-
-        anthropic_key = st.text_input(
-            "Anthropic API Key (Claude)", type="password",
-            value=_read_key("anthropic_key", remember_keys),
-        )
-        update_cookies("anthropic_key", anthropic_key, remember_keys)
-        if not remember_keys:
-            st.session_state["_sess_anthropic_key"] = anthropic_key
-        st.caption("[Get Anthropic API Key](https://console.anthropic.com/settings/keys)")
-
-        perplexity_key = st.text_input(
-            "Perplexity API Key", type="password",
-            value=_read_key("perplexity_key", remember_keys),
-        )
-        update_cookies("perplexity_key", perplexity_key, remember_keys)
-        if not remember_keys:
-            st.session_state["_sess_perplexity_key"] = perplexity_key
-        st.caption("[Get Perplexity API Key](https://www.perplexity.ai/settings/api)")
+        openai_key    = _api_key_block("openai_key",    "OpenAI (GPT-4o)",  "openai",    "https://platform.openai.com/api-keys")
+        anthropic_key = _api_key_block("anthropic_key", "Anthropic (Claude)", "anthropic", "https://console.anthropic.com/settings/keys")
+        perplexity_key = _api_key_block("perplexity_key", "Perplexity",      "perplexity", "https://www.perplexity.ai/settings/api")
 
         st.divider()
 
